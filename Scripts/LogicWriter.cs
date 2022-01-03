@@ -596,7 +596,7 @@ namespace ClusterLogicWriter
 
             if (char.IsLetter(tokens[0][0])
                 && tokens[0] != "Vector2" && tokens[0] != "Vector3"
-                && tokens[0] != "true" && tokens[0] != "false")
+                && tokens[0].ToLower() != "true" && tokens[0].ToLower() != "false")
             {   // Is RoomState
                 GimmickTarget gimmickTarget;
                 string key;
@@ -623,10 +623,12 @@ namespace ClusterLogicWriter
                 switch (tokens[0])
                 {
                     case "true":
+                    case "True":
                         Set(constantValue, "type", ParameterType.Bool);
                         Set(constantValue, "boolValue", true);
                         break;
                     case "false":
+                    case "False":
                         Set(constantValue, "type", ParameterType.Bool);
                         Set(constantValue, "boolValue", false);
                         break;
