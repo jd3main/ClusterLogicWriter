@@ -7,7 +7,7 @@ using ClusterVR.CreatorKit.Operation;
 
 
 
-namespace ClusterVRUtils
+namespace ClusterLogicWriter
 {
     [CustomEditor(typeof(LogicWriter))]
     public class LogicWriterEditor : Editor
