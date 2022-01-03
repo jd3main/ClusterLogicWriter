@@ -15,15 +15,10 @@ using System.Linq;
 using System.Text;
 
 
-namespace ClusterVRUtils
+namespace ClusterLogicWriter
 {
     using ValueType = ClusterVR.CreatorKit.Operation.ValueType;
 
-    public enum AssignType
-    {
-        Assign,
-        Signal,
-    }
 
     public class LogicWriter : MonoBehaviour
     {
@@ -180,7 +175,6 @@ namespace ClusterVRUtils
             debugOutput += ToString(statements);
 
             Set(logicComponent.Logic, "statements", statements);
-            EditorUtility.SetDirty((Component)logicComponent);
         }
 
         public Statement[] ParseStatements(string s)
@@ -222,8 +216,14 @@ namespace ClusterVRUtils
 
             TargetState targetState = ParseTarget(tokens.Take(assignIndex).ToList());
             Expression expression = ParseExpression(tokens.Skip(assignIndex + 1).ToList());
+
             if (assignType == AssignType.Signal)
                 Set(targetState, "parameterType", ParameterType.Signal);
+            else
+            {
+                var expectedType = CheckParameterType(expression);
+                Set(targetState, "parameterType", expectedType);
+            }
 
 
             // Construct the statement
@@ -384,7 +384,9 @@ namespace ClusterVRUtils
             mergedTokens.Add(tokens[1]);
             for (int i = 2; i < tokens.Count; i++)
             {
-                if (GetTokenType(tokens[i - 2]) == TokenType.Operator
+                if (GetTokenType(tokens[i - 2]) != TokenType.Numeric
+                    && GetTokenType(tokens[i - 2]) != TokenType.Name
+                    && GetTokenType(tokens[i - 2]) != TokenType.TargetState
                     && (tokens[i - 1] == "+" || tokens[i - 1] == "-")
                     && GetTokenType(tokens[i]) == TokenType.Numeric)
                 {
@@ -403,11 +405,15 @@ namespace ClusterVRUtils
         {
             if (t == ".")
                 return TokenType.Dot;
+            if (t == ",")
+                return TokenType.Comma;
+            if (t == "(" || t==")")
+                return TokenType.Bracket;
 
             if (double.TryParse(t, out var val))
                 return TokenType.Numeric;
 
-            if (Enum.TryParse<TargetStateTarget>(t, false, out TargetStateTarget targetState))
+            if (char.IsLetter(t[0]) && Enum.TryParse(t, false, out TargetStateTarget targetState))
             {
                 return TokenType.TargetState;
             }
@@ -418,16 +424,49 @@ namespace ClusterVRUtils
             return TokenType.Operator;
         }
 
+        public ParameterType CheckParameterType(Expression expression)
+        {
+            switch (expression.Type)
+            {
+                case ExpressionType.Value:
+                    return CheckParameterType(expression.Value);
+
+                case ExpressionType.OperatorExpression:
+                    return CheckParameterType(expression.OperatorExpression);
+
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid expression type");
+            }
+        }
+
+        public ParameterType CheckParameterType(Value value)
+        {
+            switch (value.Type)
+            {
+                case ValueType.Constant:
+                    return value.Constant.ParameterType;
+                case ValueType.RoomState:
+                    return value.SourceState.Type;
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid value type");
+            }
+        }
+
+        public ParameterType CheckParameterType(OperatorExpression opExp)
+        {
+            opExp.IsValid(out ParameterType type);
+            return type;
+        }
 
         public TargetState ParseTarget(IList<string> tokens)
         {
-            // Debug.Log($"ParseTarget({TokensString(tokens)})");
+            //Debug.Log($"ParseTarget({TokensString(tokens)})");
+
             Value targetValue = ParseValueExpression(tokens);
-            ParameterType targetType = targetValue.SourceState.Type;
             TargetStateTarget targetScope = targetValue.SourceState.Target.ToTargetStateTarget();
             string key = targetValue.SourceState.Key;
 
-
+            ParameterType targetType = targetValue.SourceState.Type;
             if (targetType == ParameterType.Double)
                 targetType = ParameterType.Float;
 
@@ -448,7 +487,6 @@ namespace ClusterVRUtils
             {
                 Set(exp, "type", ExpressionType.OperatorExpression);
                 Set(exp, "operatorExpression", ParseFunctionCall(tokens));
-                return exp;
             }
             else if (tokens.Any((t) => (GetTokenType(t) == TokenType.Operator)))
             {
@@ -468,7 +506,9 @@ namespace ClusterVRUtils
         {
             //Debug.Log($"ParseFunctionCall({TokensString(tokens)})");
 
-            Assert.IsTrue(TryParseFunctionName(tokens[0], out Operator op));
+            Operator op = new Operator();
+
+            Assert.IsTrue(TryParseFunctionName(tokens[0], out op));
             Assert.AreEqual(tokens[1], "(");
             Assert.AreEqual(tokens.Last(), ")");
 
@@ -554,7 +594,9 @@ namespace ClusterVRUtils
 
             Value value = new Value();
 
-            if (char.IsLetter(tokens[0][0]))
+            if (char.IsLetter(tokens[0][0])
+                && tokens[0] != "Vector2" && tokens[0] != "Vector3"
+                && tokens[0] != "true" && tokens[0] != "false")
             {   // Is RoomState
                 GimmickTarget gimmickTarget;
                 string key;
@@ -593,8 +635,8 @@ namespace ClusterVRUtils
                         Set(constantValue, "vector2Value", ParseVector2(tokens));
                         break;
                     case "Vector3":
-                        Set(constantValue, "type", ParameterType.Vector2);
-                        Set(constantValue, "vector2Value", ParseVector3(tokens));
+                        Set(constantValue, "type", ParameterType.Vector3);
+                        Set(constantValue, "vector3Value", ParseVector3(tokens));
                         break;
                     default:
                         constantValue = ParseNumericValue(tokens[0]);
@@ -654,7 +696,7 @@ namespace ClusterVRUtils
             if (token.Contains("."))
             {
                 Set(constValue, "type", ParameterType.Float);
-                Set(constValue, "floatValue", double.Parse(token));
+                Set(constValue, "floatValue", float.Parse(token));
             }
             else
             {
@@ -803,6 +845,11 @@ namespace ClusterVRUtils
 
     }
 
+    public enum AssignType
+    {
+        Assign,
+        Signal,
+    }
 
     public enum TokenType
     {
@@ -811,6 +858,8 @@ namespace ClusterVRUtils
         Operator,
         TargetState,
         Dot,
+        Comma,
+        Bracket,
     }
 
     public enum LogicScope

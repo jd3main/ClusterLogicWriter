@@ -7,7 +7,7 @@ using ClusterVR.CreatorKit.Operation;
 
 
 
-namespace ClusterVRUtils
+namespace ClusterLogicWriter
 {
     [CustomEditor(typeof(LogicWriter))]
     public class LogicWriterEditor : Editor
@@ -72,6 +72,7 @@ namespace ClusterVRUtils
         {
             var logicInterpreter = (LogicWriter)serializedObject.targetObject;
             logicInterpreter.Compile();
+            EditorUtility.SetDirty((Component)logicInterpreter.logicComponent);
         }
     }
 }
