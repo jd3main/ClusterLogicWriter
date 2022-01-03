@@ -175,7 +175,6 @@ namespace ClusterLogicWriter
             debugOutput += ToString(statements);
 
             Set(logicComponent.Logic, "statements", statements);
-            EditorUtility.SetDirty((Component)logicComponent);
         }
 
         public Statement[] ParseStatements(string s)
@@ -455,19 +454,16 @@ namespace ClusterLogicWriter
 
             if (TryParseFunctionName(tokens[0], out Operator op))
             {
-                Debug.Log("Is Function Expression");
                 Set(exp, "type", ExpressionType.OperatorExpression);
                 Set(exp, "operatorExpression", ParseFunctionCall(tokens));
             }
             else if (tokens.Any((t) => (GetTokenType(t) == TokenType.Operator)))
             {
-                Debug.Log("Is Operator Expression");
                 Set(exp, "type", ExpressionType.OperatorExpression);
                 Set(exp, "operatorExpression", ParseOperatorExpression(tokens));
             }
             else
             {
-                Debug.Log("Is Value Expression");
                 Set(exp, "type", ExpressionType.Value);
                 Set(exp, "value", ParseValueExpression(tokens));
             }
@@ -479,7 +475,9 @@ namespace ClusterLogicWriter
         {
             //Debug.Log($"ParseFunctionCall({TokensString(tokens)})");
 
-            Assert.IsTrue(TryParseFunctionName(tokens[0], out Operator op));
+            Operator op = new Operator();
+
+            Assert.IsTrue(TryParseFunctionName(tokens[0], out op));
             Assert.AreEqual(tokens[1], "(");
             Assert.AreEqual(tokens.Last(), ")");
 

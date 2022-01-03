@@ -72,6 +72,7 @@ namespace ClusterLogicWriter
         {
             var logicInterpreter = (LogicWriter)serializedObject.targetObject;
             logicInterpreter.Compile();
+            EditorUtility.SetDirty((Component)logicInterpreter.logicComponent);
         }
     }
 }
