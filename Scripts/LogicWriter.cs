@@ -219,12 +219,10 @@ namespace ClusterLogicWriter
 
             if (assignType == AssignType.Signal)
                 Set(targetState, "parameterType", ParameterType.Signal);
-            else if (expression.Type == ExpressionType.Value)
+            else
             {
-                if (expression.Value.Type == ValueType.Constant)
-                    Set(targetState, "parameterType", expression.Value.Constant.ParameterType);
-                else
-                    Set(targetState, "parameterType", expression.Value.SourceState.Type);
+                var expectedType = CheckParameterType(expression);
+                Set(targetState, "parameterType", expectedType);
             }
 
 
@@ -426,6 +424,39 @@ namespace ClusterLogicWriter
             return TokenType.Operator;
         }
 
+        public ParameterType CheckParameterType(Expression expression)
+        {
+            switch (expression.Type)
+            {
+                case ExpressionType.Value:
+                    return CheckParameterType(expression.Value);
+
+                case ExpressionType.OperatorExpression:
+                    return CheckParameterType(expression.OperatorExpression);
+
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid expression type");
+            }
+        }
+
+        public ParameterType CheckParameterType(Value value)
+        {
+            switch (value.Type)
+            {
+                case ValueType.Constant:
+                    return value.Constant.ParameterType;
+                case ValueType.RoomState:
+                    return value.SourceState.Type;
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid value type");
+            }
+        }
+
+        public ParameterType CheckParameterType(OperatorExpression opExp)
+        {
+            opExp.IsValid(out ParameterType type);
+            return type;
+        }
 
         public TargetState ParseTarget(IList<string> tokens)
         {
@@ -665,7 +696,7 @@ namespace ClusterLogicWriter
             if (token.Contains("."))
             {
                 Set(constValue, "type", ParameterType.Float);
-                Set(constValue, "floatValue", double.Parse(token));
+                Set(constValue, "floatValue", float.Parse(token));
             }
             else
             {
