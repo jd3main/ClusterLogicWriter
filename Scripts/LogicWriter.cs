@@ -162,7 +162,15 @@ namespace ClusterLogicWriter
                     return $"{ToString(opExp.Operands[0])} ? {ToString(opExp.Operands[1])} :  {ToString(opExp.Operands[2])}";
 
                 default:
-                    throw new ArgumentOutOfRangeException($"Invalid operator type");
+                    string s = opExp.Operator.ToString() + "(";
+                    for (int i = 0; i < opExp.Operands.Length; i++)
+                    {
+                        if (i > 0)
+                            s += ",";
+                        s += ToString(opExp.Operands[i]);
+                    }
+                    s += ")";
+                    return s;
             }
         }
 
@@ -542,6 +550,21 @@ namespace ClusterLogicWriter
             if (numArgs != operands.Count)
             {
                 throw new Exception($"Function {Enum.GetName(typeof(Operator), op)} requires {numArgs} arguments but get {operands.Count}");
+            }
+
+            switch (op)
+            {
+                case Operator.Length:
+                case Operator.Cross:
+                case Operator.Dot:
+                    foreach (var operand in operands)
+                    {
+                        if (operand.Value.Type == ValueType.RoomState)
+                        {
+                            Set(operand.Value.SourceState, "type", ParameterType.Vector3);
+                        }
+                    }
+                    break;
             }
 
             var opExp = new OperatorExpression();
