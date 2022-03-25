@@ -1,11 +1,14 @@
 {
-    "name": "LogicWriter",
+    "name": "LogicWriterEditor",
     "references": [
         "GUID:0f1635895e1b948b9ab74a0ae6a97007",
-        "GUID:8adf783bee92d48cd904473c4e2a5515",
         "GUID:1a425dbd99e0948b7a19b5964130c2b6",
         "GUID:d3c0ea12ca0ef4edbbbad8158a5d4a57",
-        "GUID:18cf2b1bfb5c04eccb3ebe52aeffe2c2"
+        "GUID:20189837e39554ff8b3d7bf78e895e3e",
+        "GUID:8adf783bee92d48cd904473c4e2a5515",
+        "GUID:6afc7a87754b74712bf1db60172d7bc2",
+        "GUID:18cf2b1bfb5c04eccb3ebe52aeffe2c2",
+        "GUID:a19be0bf1aced49c9834d695cfd05562"
     ],
     "includePlatforms": [
         "Editor"

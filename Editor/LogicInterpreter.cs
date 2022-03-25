@@ -9,75 +9,91 @@ using ClusterVR.CreatorKit.Gimmick;
 using ClusterVR.CreatorKit.Operation;
 using ClusterVR.CreatorKit.Operation.Implements;
 
-using System.Reflection;
 using System;
 using System.Linq;
 using System.Text;
 
 
-namespace ClusterVRUtils
+namespace ClusterLogicWriter
 {
     using ValueType = ClusterVR.CreatorKit.Operation.ValueType;
+    using _Logic = ClusterVR.CreatorKit.Operation.Logic;
 
-    public enum AssignType
+    public class LogicInterpreter
     {
-        Assign,
-        Signal,
-    }
-
-    public class LogicWriter : MonoBehaviour
-    {
-        [SerializeField]
-        private Component _logicComponent;
-        public ILogic logicComponent
-        {
-            get => (ILogic)_logicComponent;
-            set { _logicComponent = (Component)value; }
-        }
+        public ILogic logicComponent;
 
         [SerializeField]
         private string _logicCode = "";
-        public string logicCode { get => _logicCode; set { _logicCode = value; } }
+        public string logicCode
+        {
+            get => _logicCode;
+            set
+            {
+                if (value != _logicCode)
+                {
+                    _logicCode = value;
+                    codeModified = true;
+                }
+            }
+        }
 
         public string debugOutput;
 
         public bool omitCurrentTarget = true;
+        public bool compressStatements = true;
+        public bool codeModified = true;
 
 
-        private void Reset()
+        public LogicInterpreter()
         {
-            logicComponent = GetComponent<ILogic>();
+            Debug.Log("LogicInterpreter()");
         }
-
 
         public void Extract()
         {
-            Logic logic = logicComponent.Logic;
-            logicCode = ToString(logic.Statements);
+            Logic logic = (Logic)logicComponent.Logic;
+
+            if (compressStatements)
+            {
+                logic.Statements = CompressStatements(logic.Statements).ToArray();
+            }
+
+            logicCode = ToCode(logic.Statements);
+            codeModified = false;
         }
 
-        public string ToString(IEnumerable<Statement> statements)
+        public void Compile()
+        {
+            Debug.Log($"logicCode = {logicCode}");
+            Logic logic = ParseLogic(logicCode);
+            logicComponent._Set("logic", (_Logic)logic);
+            codeModified = false;
+        }
+
+
+        public string ToCode(IEnumerable<Statement> statements)
         {
             StringBuilder txt = new StringBuilder();
             foreach (Statement stm in statements)
             {
-                txt.AppendLine(ToString(stm));
+                txt.AppendLine(ToCode(stm));
             }
             return txt.ToString();
         }
 
-        public string ToString(Statement stm)
+        public string ToCode(Statement stm)
         {
             SingleStatement single = stm.SingleStatement;
             TargetState targetState = single.TargetState;
             Expression expression = single.Expression;
 
-            string expText = ToString(expression);
+            string expText = ToCode(expression);
 
             var targetType = targetState.ParameterType;
             string assignSymbol = (targetType == ParameterType.Signal) ? "<-" : "=";
 
-            if (omitCurrentTarget && targetState.Target == GetLogicScope().ToTargetStateTarget())
+            if (omitCurrentTarget && targetState.Target == GetLogicScope())
             {
                 return $"{targetState.Key} {assignSymbol} {expText}";
             }
@@ -86,25 +102,25 @@ namespace ClusterVRUtils
 
         }
 
-        public string ToString(Expression exp)
+        public string ToCode(Expression exp)
         {
             switch (exp.Type)
             {
                 case ExpressionType.Value:
-                    return ToString(exp.Value);
+                    return ToCode(exp.Value);
                 case ExpressionType.OperatorExpression:
-                    return ToString(exp.OperatorExpression);
+                    return ToCode(exp.OperatorExpression);
                 default:
                     throw new ArgumentOutOfRangeException($"Invalid expression type");
             }
         }
 
-        public string ToString(Value valExp)
+        public string ToCode(Value valExp)
         {
             switch (valExp.Type)
             {
                 case ValueType.Constant:
-                    var valueObject = GetStateValue(valExp.Constant);
+                    var valueObject = valExp.Constant.GetStateValue();
                     var valueStr = valueObject.ToString();
                     var type = valueObject.GetType();
                     if (type == typeof(float) && !valueStr.Contains("."))
@@ -117,7 +133,7 @@ namespace ClusterVRUtils
                 case ValueType.RoomState:
                     var key = valExp.SourceState.Key;
                     var target = valExp.SourceState.Target;
-                    if (omitCurrentTarget && target == GetLogicScope().ToGimmickTarget())
+                    if (omitCurrentTarget && target == GetLogicScope())
                         return key;
                     return $"{target}.{key}";
                 default:
@@ -125,87 +141,95 @@ namespace ClusterVRUtils
             }
         }
 
-        public string ToString(OperatorExpression opExp)
+        public string ToCode(OperatorExpression opExp)
         {
             switch (opExp.Operator)
             {
                 case Operator.Not:
-                    return $"!{ToString(opExp.Operands[0])}";
+                    return $"!{ToCode(opExp.Operands[0])}";
                 case Operator.Minus:
-                    return $"-{ToString(opExp.Operands[0])}";
+                    return $"-{ToCode(opExp.Operands[0])}";
 
                 case Operator.Add:
-                    return $"{ToString(opExp.Operands[0])} + {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} + {ToCode(opExp.Operands[1])}";
                 case Operator.Multiply:
-                    return $"{ToString(opExp.Operands[0])} * {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} * {ToCode(opExp.Operands[1])}";
                 case Operator.Subtract:
-                    return $"{ToString(opExp.Operands[0])} - {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} - {ToCode(opExp.Operands[1])}";
                 case Operator.Divide:
-                    return $"{ToString(opExp.Operands[0])} / {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} / {ToCode(opExp.Operands[1])}";
                 case Operator.Modulo:
-                    return $"{ToString(opExp.Operands[0])} % {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} % {ToCode(opExp.Operands[1])}";
 
                 case Operator.Equals:
-                    return $"{ToString(opExp.Operands[0])} == {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} == {ToCode(opExp.Operands[1])}";
                 case Operator.NotEquals:
-                    return $"{ToString(opExp.Operands[0])} != {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} != {ToCode(opExp.Operands[1])}";
                 case Operator.GreaterThan:
-                    return $"{ToString(opExp.Operands[0])} > {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} > {ToCode(opExp.Operands[1])}";
                 case Operator.GreaterThanOrEqual:
-                    return $"{ToString(opExp.Operands[0])} >= {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} >= {ToCode(opExp.Operands[1])}";
                 case Operator.LessThan:
-                    return $"{ToString(opExp.Operands[0])} < {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} < {ToCode(opExp.Operands[1])}";
                 case Operator.LessThanOrEqual:
-                    return $"{ToString(opExp.Operands[0])} <= {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} <= {ToCode(opExp.Operands[1])}";
 
                 case Operator.And:
-                    return $"{ToString(opExp.Operands[0])} && {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} && {ToCode(opExp.Operands[1])}";
                 case Operator.Or:
-                    return $"{ToString(opExp.Operands[0])} || {ToString(opExp.Operands[1])}";
+                    return $"{ToCode(opExp.Operands[0])} || {ToCode(opExp.Operands[1])}";
 
                 case Operator.Condition:
-                    return $"{ToString(opExp.Operands[0])} ? {ToString(opExp.Operands[1])} :  {ToString(opExp.Operands[2])}";
+                    return $"{ToCode(opExp.Operands[0])} ? {ToCode(opExp.Operands[1])} :  {ToCode(opExp.Operands[2])}";
 
                 default:
-                    throw new ArgumentOutOfRangeException($"Invalid operator type");
+                    string s = opExp.Operator.ToString() + "(";
+                    for (int i = 0; i < opExp.Operands.Length; i++)
+                    {
+                        if (i > 0)
+                            s += ",";
+                        s += ToCode(opExp.Operands[i]);
+                    }
+                    s += ")";
+                    return s;
             }
         }
 
 
-        public void Compile()
-        {
-            Statement[] statements = ParseStatements(logicCode);
-
-            debugOutput = "";
-            debugOutput += ToString(statements);
-
-            Set(logicComponent.Logic, "statements", statements);
-            EditorUtility.SetDirty((Component)logicComponent);
-        }
-
-        public Statement[] ParseStatements(string s)
+        public Logic ParseLogic(string s)
         {
             List<Statement> statements = new List<Statement>();
 
-            string[] lines = s.Split(new char[] { '\n', ';' });
+            string[] lines = s.Split(new char[] {'\r', '\n', ';' }).Where(line=>!string.IsNullOrWhiteSpace(line)).ToArray();
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
+                Debug.Log($"line = {line}");
                 Statement stm = ParseStatement(line);
+                Debug.Log($"stm = {ToCode(stm)}");
                 if (stm != null)
                     statements.Add(stm);
             }
-            return statements.ToArray();
+
+            debugOutput = "";
+            debugOutput += ToCode(statements);
+            Debug.Log(debugOutput);
+
+            Logic logic = new Logic();
+            logic.Statements = statements.ToArray();
+
+            return logic;
         }
 
         public Statement ParseStatement(string s)
         {
+            Debug.Log($"ParseStatement({s})");
             if (s == "")
                 return null;
 
             List<string> tokens = Tokenize(s);
 
-            // Debug.Log($"ParseStatement({TokensString(tokens)})");
+            Debug.Log($"tokens = {TokensToString(tokens)}");
 
             int assignIndex = Math.Max(tokens.IndexOf("="), tokens.IndexOf("<-"));
             if (assignIndex < 0)
@@ -219,23 +243,28 @@ namespace ClusterVRUtils
                 assignType = AssignType.Signal;
 
 
-
             TargetState targetState = ParseTarget(tokens.Take(assignIndex).ToList());
             Expression expression = ParseExpression(tokens.Skip(assignIndex + 1).ToList());
-            if (assignType == AssignType.Signal)
-                Set(targetState, "parameterType", ParameterType.Signal);
 
+            if (assignType == AssignType.Signal)
+                targetState.ParameterType = ParameterType.Signal;
+            else
+            {
+                var expectedType = PredictParameterType(expression);
+                targetState.ParameterType = expectedType;
+            }
+
+            Debug.Log($"expression = {ToCode(expression)}");
 
             // Construct the statement
             Statement stm = new Statement();
             SingleStatement single = new SingleStatement();
-            Set(stm, "singleStatement", single);
-            Set(single, "targetState", targetState);
-            Set(single, "expression", expression);
+            stm.SingleStatement = single;
+            single.TargetState = targetState;
+            single.Expression = expression;
 
             return stm;
         }
-
 
         public List<string> Tokenize(string s)
         {
@@ -377,6 +406,10 @@ namespace ClusterVRUtils
             return tokens;
         }
 
+
+        /// <summary>
+        /// Function <c>ProcessSignTokens</c> merge each sign and the folloing numbers into one token.
+        /// </summary>
         public List<string> ProcessSignTokens(IList<string> tokens)
         {
             var mergedTokens = new List<string>();
@@ -384,7 +417,9 @@ namespace ClusterVRUtils
             mergedTokens.Add(tokens[1]);
             for (int i = 2; i < tokens.Count; i++)
             {
-                if (GetTokenType(tokens[i - 2]) == TokenType.Operator
+                if (GetTokenType(tokens[i - 2]) != TokenType.Numeric
+                    && GetTokenType(tokens[i - 2]) != TokenType.Name
+                    && GetTokenType(tokens[i - 2]) != TokenType.TargetState
                     && (tokens[i - 1] == "+" || tokens[i - 1] == "-")
                     && GetTokenType(tokens[i]) == TokenType.Numeric)
                 {
@@ -403,11 +438,15 @@ namespace ClusterVRUtils
         {
             if (t == ".")
                 return TokenType.Dot;
+            if (t == ",")
+                return TokenType.Comma;
+            if (t == "(" || t==")")
+                return TokenType.Bracket;
 
             if (double.TryParse(t, out var val))
                 return TokenType.Numeric;
 
-            if (Enum.TryParse<TargetStateTarget>(t, false, out TargetStateTarget targetState))
+            if (char.IsLetter(t[0]) && Enum.TryParse(t, false, out TargetStateTarget targetState))
             {
                 return TokenType.TargetState;
             }
@@ -418,47 +457,79 @@ namespace ClusterVRUtils
             return TokenType.Operator;
         }
 
+        public ParameterType PredictParameterType(Expression expression)
+        {
+            switch (expression.Type)
+            {
+                case ExpressionType.Value:
+                    return PredictParameterType(expression.Value);
+
+                case ExpressionType.OperatorExpression:
+                    return PredictParameterType(expression.OperatorExpression);
+
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid expression type");
+            }
+        }
+
+        public ParameterType PredictParameterType(Value value)
+        {
+            switch (value.Type)
+            {
+                case ValueType.Constant:
+                    return value.Constant.ParameterType;
+                case ValueType.RoomState:
+                    return value.SourceState.Type;
+                default:
+                    throw new ArgumentOutOfRangeException("Invalid value type");
+            }
+        }
+
+        public ParameterType PredictParameterType(OperatorExpression opExp)
+        {
+            opExp.IsValid(out ParameterType type);
+            return type;
+        }
 
         public TargetState ParseTarget(IList<string> tokens)
         {
-            // Debug.Log($"ParseTarget({TokensString(tokens)})");
+            Debug.Log($"ParseTarget({TokensToString(tokens)})");
+
             Value targetValue = ParseValueExpression(tokens);
-            ParameterType targetType = targetValue.SourceState.Type;
-            TargetStateTarget targetScope = targetValue.SourceState.Target.ToTargetStateTarget();
+            LogicScope targetScope = targetValue.SourceState.Target;
             string key = targetValue.SourceState.Key;
 
-
+            ParameterType targetType = targetValue.SourceState.Type;
             if (targetType == ParameterType.Double)
                 targetType = ParameterType.Float;
 
             TargetState targetState = new TargetState();
-            Set(targetState, "parameterType", targetType);
-            Set(targetState, "target", targetScope);
-            Set(targetState, "key", key);
+            targetState.ParameterType = targetType;
+            targetState.Target = targetScope;
+            targetState.Key = key;
             return targetState;
         }
 
         public Expression ParseExpression(IList<string> tokens)
         {
-            //Debug.Log($"ParseExpression({TokensString(tokens)})");
+            Debug.Log($"ParseExpression({TokensToString(tokens)})");
 
             Expression exp = new Expression();
 
             if (TryParseFunctionName(tokens[0], out Operator op))
             {
-                Set(exp, "type", ExpressionType.OperatorExpression);
-                Set(exp, "operatorExpression", ParseFunctionCall(tokens));
-                return exp;
+                exp._Set("type", ExpressionType.OperatorExpression);
+                exp._Set("operatorExpression", ParseFunctionCall(tokens));
             }
             else if (tokens.Any((t) => (GetTokenType(t) == TokenType.Operator)))
             {
-                Set(exp, "type", ExpressionType.OperatorExpression);
-                Set(exp, "operatorExpression", ParseOperatorExpression(tokens));
+                exp._Set("type", ExpressionType.OperatorExpression);
+                exp._Set("operatorExpression", ParseOperatorExpression(tokens));
             }
             else
             {
-                Set(exp, "type", ExpressionType.Value);
-                Set(exp, "value", ParseValueExpression(tokens));
+                exp._Set("type", ExpressionType.Value);
+                exp._Set("value", ParseValueExpression(tokens));
             }
 
             return exp;
@@ -466,9 +537,11 @@ namespace ClusterVRUtils
 
         public OperatorExpression ParseFunctionCall(IList<string> tokens)
         {
-            //Debug.Log($"ParseFunctionCall({TokensString(tokens)})");
+            Debug.Log($"ParseFunctionCall({TokensToString(tokens)})");
 
-            Assert.IsTrue(TryParseFunctionName(tokens[0], out Operator op));
+            Operator op = new Operator();
+
+            Assert.IsTrue(TryParseFunctionName(tokens[0], out op));
             Assert.AreEqual(tokens[1], "(");
             Assert.AreEqual(tokens.Last(), ")");
 
@@ -504,15 +577,30 @@ namespace ClusterVRUtils
                 throw new Exception($"Function {Enum.GetName(typeof(Operator), op)} requires {numArgs} arguments but get {operands.Count}");
             }
 
-            var opExp = new OperatorExpression();
-            Set(opExp, "operator", op);
-            Set(opExp, "operands", operands.ToArray());
+            switch (op)
+            {
+                case Operator.Length:
+                case Operator.Cross:
+                case Operator.Dot:
+                    foreach (var operand in operands)
+                    {
+                        if (operand.Value.Type == ValueType.RoomState)
+                        {
+                            operand.Value.SourceState._Set("type", ParameterType.Vector3);
+                        }
+                    }
+                    break;
+            }
+
+            OperatorExpression opExp = new OperatorExpression();
+            opExp.Operator = op;
+            opExp._Set("operands", operands.ToArray());
             return opExp;
         }
 
         public OperatorExpression ParseOperatorExpression(IList<string> tokens)
         {
-            //Debug.Log($"ParseOperatorExpression({TokensString(tokens)})");
+            Debug.Log($"ParseOperatorExpression({TokensToString(tokens)})");
 
             Operator op = 0;
             List<Expression> operands = new List<Expression>();
@@ -535,14 +623,14 @@ namespace ClusterVRUtils
             operandTokens.Clear();
 
             OperatorExpression opExp = new OperatorExpression();
-            Set(opExp, "operator", op);
-            Set(opExp, "operands", operands.ToArray());
+            opExp.Operator = op;
+            opExp._Set("operands", operands.ToArray());
             return opExp;
         }
 
         public Value ParseValueExpression(IList<string> tokens)
         {
-            //Debug.Log($"ParseValueExpression({TokensString(tokens)})");
+            //Debug.Log($"ParseValueExpression({TokensToString(tokens)})");
 
             /* A Value can be:
              *      1. RoomState
@@ -554,54 +642,58 @@ namespace ClusterVRUtils
 
             Value value = new Value();
 
-            if (char.IsLetter(tokens[0][0]))
+            if (char.IsLetter(tokens[0][0])
+                && tokens[0] != "Vector2" && tokens[0] != "Vector3"
+                && tokens[0].ToLower() != "true" && tokens[0].ToLower() != "false")
             {   // Is RoomState
                 GimmickTarget gimmickTarget;
                 string key;
-                if (Enum.TryParse<GimmickTarget>(tokens[0], false, out gimmickTarget))
+                if (Enum.TryParse(tokens[0], false, out gimmickTarget))
                 {
                     key = tokens[2];
                 }
                 else
                 {
-                    gimmickTarget = GetLogicScope().ToGimmickTarget();
+                    gimmickTarget = GetLogicScope();
                     key = tokens[0];
                 }
 
-                Set(value, "type", ValueType.RoomState);
-                Set(value, "sourceState", new SourceState());
-                Set(value.SourceState, "target", gimmickTarget);    // Item, Player, Global
-                Set(value.SourceState, "key", key);
+                value._Set("type", ValueType.RoomState);
+                value._Set("sourceState", new SourceState());
+                value.SourceState.Target = gimmickTarget;    // Item, Player, Global
+                value.SourceState.Key = key;
             }
             else
             {   // Is Constant
-                Set(value, "type", ValueType.Constant);
+                value.Type = ValueType.Constant;
                 ConstantValue constantValue = new ConstantValue();
 
                 switch (tokens[0])
                 {
                     case "true":
-                        Set(constantValue, "type", ParameterType.Bool);
-                        Set(constantValue, "boolValue", true);
+                    case "True":
+                        constantValue.Type = ParameterType.Bool;
+                        constantValue.boolValue = true;
                         break;
                     case "false":
-                        Set(constantValue, "type", ParameterType.Bool);
-                        Set(constantValue, "boolValue", false);
+                    case "False":
+                        constantValue.Type = ParameterType.Bool;
+                        constantValue.boolValue = false;
                         break;
                     case "Vector2":
-                        Set(constantValue, "type", ParameterType.Vector2);
-                        Set(constantValue, "vector2Value", ParseVector2(tokens));
+                        constantValue.type = ParameterType.Vector2;
+                        constantValue.vector2Value = ParseVector2(tokens);
                         break;
                     case "Vector3":
-                        Set(constantValue, "type", ParameterType.Vector2);
-                        Set(constantValue, "vector2Value", ParseVector3(tokens));
+                        constantValue.Type = ParameterType.Vector3;
+                        constantValue.vector3Value = ParseVector3(tokens);
                         break;
                     default:
                         constantValue = ParseNumericValue(tokens[0]);
                         break;
                 }
 
-                Set(value, "constant", constantValue);
+                value.constant = constantValue;
             }
             return value;
         }
@@ -617,8 +709,9 @@ namespace ClusterVRUtils
                     return LogicScope.Player;
                 if (type == typeof(GlobalLogic))
                     return LogicScope.Global;
+                throw new ArgumentOutOfRangeException($"{type} is not a type of Logic Script");
             }
-            return new LogicScope();
+            return null;
         }
 
 
@@ -646,20 +739,19 @@ namespace ClusterVRUtils
             return new Vector3(p1, p2, p3);
         }
 
-
         public ConstantValue ParseNumericValue(string token)
         {
             ConstantValue constValue = new ConstantValue();
 
             if (token.Contains("."))
             {
-                Set(constValue, "type", ParameterType.Float);
-                Set(constValue, "floatValue", double.Parse(token));
+                constValue.Type = ParameterType.Float;
+                constValue.floatValue = float.Parse(token);
             }
             else
             {
-                Set(constValue, "type", ParameterType.Integer);
-                Set(constValue, "integerValue", int.Parse(token));
+                constValue.Type = ParameterType.Integer;
+                constValue.integerValue = int.Parse(token);
             }
             return constValue;
         }
@@ -750,48 +842,34 @@ namespace ClusterVRUtils
         }
 
 
-        private static object GetStateValue(IStateValueSet stateValueSet)
+        public List<Statement> CompressStatements(IEnumerable<Statement> _statements)
         {
-            ParameterType parType = stateValueSet.ParameterType;
-            switch (parType)
+            List<Statement> statements = _statements.ToList();
+            for (int i = 1; i < statements.Count; i++)
             {
-                case ParameterType.Bool:
-                    return Get<bool>((BoolStateValueSet)stateValueSet, "value");
-                case ParameterType.Float:
-                    return Get<float>((FloatStateValueSet)stateValueSet, "value");
-                case ParameterType.Integer:
-                    return Get<int>((IntegerStateValueSet)stateValueSet, "value");
-                case ParameterType.Vector2:
-                    return Call<Vector2>((Vector2StateValueSet)stateValueSet, "GetValue");
-                case ParameterType.Vector3:
-                    return Call<Vector3>((Vector3StateValueSet)stateValueSet, "GetValue");
+                if (statements[i].TargetState.Equals(statements[i-1].TargetState)
+                    && statements[i].SingleStatement.Expression.Type == ExpressionType.OperatorExpression)
+                {
+                    var opExp = statements[i].Expression.OperatorExpression;
+                    var operands = opExp.Operands;
+                    for (int j = 0; j < operands.Length; j++)
+                    {
+                        if (operands[j].Type == ExpressionType.Value
+                            && operands[j].Value.Type == ValueType.RoomState
+                            && operands[j].Value.SourceState.Equals(statements[i].TargetState))
+                        {
+                            operands[j] = statements[i - 1].Expression;
+                        }
+                    }
+
+                    statements.RemoveAt(i - 1);
+                    i -= 1;
+                }
             }
-            return null;
+            return statements;
         }
 
-        private static TVal Get<TVal>(object obj, string name)
-        {
-            Type type = obj.GetType();
-            FieldInfo fieldInfo = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
-            TVal value = (TVal)fieldInfo.GetValue(obj);
-            return value;
-        }
-
-        private static void Set<TVal>(object obj, string name, TVal value)
-        {
-            Type type = obj.GetType();
-            FieldInfo fieldInfo = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
-            fieldInfo.SetValue(obj, value);
-        }
-
-        private static TVal Call<TVal>(object obj, string name, object[] parameters = null)
-        {
-            Type type = obj.GetType();
-            MethodInfo methodInfo = type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance);
-            return (TVal)methodInfo.Invoke(obj, parameters);
-        }
-
-        private static string TokensString(IEnumerable<string> tokens)
+        private static string TokensToString(IEnumerable<string> tokens)
         {
             string s = "";
             foreach (var t in tokens)
@@ -803,6 +881,11 @@ namespace ClusterVRUtils
 
     }
 
+    public enum AssignType
+    {
+        Assign,
+        Signal,
+    }
 
     public enum TokenType
     {
@@ -811,60 +894,12 @@ namespace ClusterVRUtils
         Operator,
         TargetState,
         Dot,
+        Comma,
+        Bracket,
     }
 
-    public enum LogicScope
-    {
-        Item,
-        Player,
-        Global,
-    }
 
     public static class LogicScopeFunctions
     {
-        public static GimmickTarget ToGimmickTarget(this LogicScope scope)
-        {
-            switch (scope)
-            {
-                case LogicScope.Item:
-                    return GimmickTarget.Item;
-                case LogicScope.Player:
-                    return GimmickTarget.Player;
-                case LogicScope.Global:
-                    return GimmickTarget.Global;
-                default:
-                    throw new ArgumentOutOfRangeException("Invalid LogicScope");
-            }
-        }
-
-        public static TargetStateTarget ToTargetStateTarget(this LogicScope scope)
-        {
-            switch (scope)
-            {
-                case LogicScope.Item:
-                    return TargetStateTarget.Item;
-                case LogicScope.Player:
-                    return TargetStateTarget.Player;
-                case LogicScope.Global:
-                    return TargetStateTarget.Global;
-                default:
-                    throw new ArgumentOutOfRangeException("Invalid LogicScope");
-            }
-        }
-
-        public static TargetStateTarget ToTargetStateTarget(this GimmickTarget scope)
-        {
-            switch (scope)
-            {
-                case GimmickTarget.Item:
-                    return TargetStateTarget.Item;
-                case GimmickTarget.Player:
-                    return TargetStateTarget.Player;
-                case GimmickTarget.Global:
-                    return TargetStateTarget.Global;
-                default:
-                    throw new ArgumentOutOfRangeException("Invalid LogicScope");
-            }
-        }
     }
 }
