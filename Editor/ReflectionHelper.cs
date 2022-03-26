@@ -6,9 +6,9 @@ using UnityEngine;
 
 namespace ClusterLogicWriter
 {
-    public static class ReflectionHelper
+    internal static class ReflectionHelper
     {
-        public static TVal _Get<TVal>(this object obj, string name)
+        public static TVal Get<TVal>(this object obj, string name)
         {
             Type type = obj.GetType();
             FieldInfo fieldInfo = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
@@ -16,14 +16,14 @@ namespace ClusterLogicWriter
             return value;
         }
 
-        public static void _Set<TVal>(this object obj, string name, TVal value)
+        public static void Set<TVal>(this object obj, string name, TVal value)
         {
             Type type = obj.GetType();
             FieldInfo fieldInfo = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
             fieldInfo.SetValue(obj, value);
         }
 
-        public static TVal _Call<TVal>(this object obj, string name, object[] parameters = null)
+        public static TVal Call<TVal>(this object obj, string name, object[] parameters = null)
         {
             Type type = obj.GetType();
             MethodInfo methodInfo = type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance);
@@ -37,15 +37,15 @@ namespace ClusterLogicWriter
             switch (parType)
             {
                 case ParameterType.Bool:
-                    return _Get<bool>((BoolStateValueSet)stateValueSet, "value");
+                    return Get<bool>((BoolStateValueSet)stateValueSet, "value");
                 case ParameterType.Float:
-                    return _Get<float>((FloatStateValueSet)stateValueSet, "value");
+                    return Get<float>((FloatStateValueSet)stateValueSet, "value");
                 case ParameterType.Integer:
-                    return _Get<int>((IntegerStateValueSet)stateValueSet, "value");
+                    return Get<int>((IntegerStateValueSet)stateValueSet, "value");
                 case ParameterType.Vector2:
-                    return _Call<Vector2>((Vector2StateValueSet)stateValueSet, "GetValue");
+                    return Call<Vector2>((Vector2StateValueSet)stateValueSet, "GetValue");
                 case ParameterType.Vector3:
-                    return _Call<Vector3>((Vector3StateValueSet)stateValueSet, "GetValue");
+                    return Call<Vector3>((Vector3StateValueSet)stateValueSet, "GetValue");
             }
             return null;
         }

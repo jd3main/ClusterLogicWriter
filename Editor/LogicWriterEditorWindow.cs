@@ -21,7 +21,7 @@ namespace ClusterLogicWriter
 
         LogicInterpreter interpreter = new LogicInterpreter();
 
-        ILogic selectedLogicComponent
+        ILogic SelectedLogicComponent
         {
             get
             {
@@ -74,14 +74,14 @@ namespace ClusterLogicWriter
             if (logicComponents.Count > 0)
             {
                 var options = logicComponents.Select(c =>
-                    $"{'[' + c.GetInstanceID().ToString() + ']',-10} {c.GetType().Name} ({c._Get<object>("key")._Get<object>("key")})")
+                    $"{'[' + c.GetInstanceID().ToString() + ']',-10} {c.GetType().Name} ({c.Get<object>("key").Get<object>("key")})")
                     .ToArray();
 
                 var newSelectedIndex = EditorGUILayout.Popup(selectedIndex, options);
                 if (newSelectedIndex != selectedIndex || interpreter.logicComponent == null)
                 {
                     selectedIndex = newSelectedIndex;
-                    interpreter.logicComponent = selectedLogicComponent;
+                    interpreter.logicComponent = SelectedLogicComponent;
                     if (autoExtract)
                     {
                         interpreter.Extract();
@@ -121,7 +121,7 @@ namespace ClusterLogicWriter
 
                 codeScrollPosition = GUILayout.BeginScrollView(codeScrollPosition);
                 EditorGUILayout.LabelField("Logic Code" + (interpreter.codeModified ? "*" : ""));
-                interpreter.logicCode = EditorGUILayout.TextArea(interpreter.logicCode, GUILayout.ExpandHeight(true));
+                interpreter.LogicCode = EditorGUILayout.TextArea(interpreter.LogicCode, GUILayout.ExpandHeight(true));
                 GUILayout.EndScrollView();
             }
         }
