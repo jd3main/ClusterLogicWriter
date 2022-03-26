@@ -71,7 +71,6 @@ namespace ClusterLogicWriter
             codeModified = false;
         }
 
-
         public string ToCode(IEnumerable<Statement> statements)
         {
             StringBuilder txt = new StringBuilder();
@@ -84,9 +83,15 @@ namespace ClusterLogicWriter
 
         public string ToCode(Statement stm)
         {
-            SingleStatement single = stm.SingleStatement;
-            TargetState targetState = single.TargetState;
-            Expression expression = single.Expression;
+            return ToCode(stm.SingleStatement);
+        }
+
+        public string ToCode(SingleStatement singleStm)
+        {
+            TargetState targetState = singleStm.TargetState;
+            Expression expression = singleStm.Expression;
+            Debug.Log($"single = {singleStm}");
+            Debug.Log($"targetState.Target = {targetState.Target}");
 
             string expText = ToCode(expression);
 
@@ -235,15 +240,8 @@ namespace ClusterLogicWriter
             if (assignIndex < 0)
                 throw new Exception("= or <- needed");
 
-            AssignType assignType;
-
-            if (tokens[assignIndex] == "=")
-                assignType = AssignType.Assign;
-            else
-                assignType = AssignType.Signal;
-
-
             TargetState targetState = ParseTarget(tokens.Take(assignIndex).ToList());
+            AssignType assignType = ParseAssignType(tokens[assignIndex]);
             Expression expression = ParseExpression(tokens.Skip(assignIndex + 1).ToList());
 
             if (assignType == AssignType.Signal)
@@ -654,13 +652,13 @@ namespace ClusterLogicWriter
                 }
                 else
                 {
-                    gimmickTarget = GetLogicScope();
+                    gimmickTarget = (GimmickTarget)GetLogicScope();
                     key = tokens[0];
                 }
 
                 value._Set("type", ValueType.RoomState);
                 value._Set("sourceState", new SourceState());
-                value.SourceState.Target = gimmickTarget;    // Item, Player, Global
+                value.SourceState.Target = (LogicScope)gimmickTarget;    // Item, Player, Global
                 value.SourceState.Key = key;
             }
             else
@@ -711,7 +709,7 @@ namespace ClusterLogicWriter
                     return LogicScope.Global;
                 throw new ArgumentOutOfRangeException($"{type} is not a type of Logic Script");
             }
-            return null;
+            throw new ArgumentOutOfRangeException($"{logicComponent} not set");
         }
 
 
@@ -896,10 +894,5 @@ namespace ClusterLogicWriter
         Dot,
         Comma,
         Bracket,
-    }
-
-
-    public static class LogicScopeFunctions
-    {
     }
 }

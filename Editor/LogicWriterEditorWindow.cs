@@ -12,9 +12,15 @@ namespace ClusterLogicWriter
 {
     public class LogicWriterEditorWindow : EditorWindow
     {
-        int selectedIndex = 0;
-
         List<Component> logicComponents;
+        int selectedIndex = 0;
+        bool autoExtract = true;
+        bool showExtractOptions = false;
+        Vector2 codeScrollPosition;
+        GameObject lastActiveGameObject;
+
+        LogicInterpreter interpreter = new LogicInterpreter();
+
         ILogic selectedLogicComponent
         {
             get
@@ -27,17 +33,10 @@ namespace ClusterLogicWriter
             }
         }
 
-        bool autoExtract = true;
-        bool showExtractOptions = false;
-
-        LogicInterpreter interpreter = new LogicInterpreter();
-        GameObject lastActiveGameObject;
-
 
         [MenuItem("Cluster/Logic Writer")]
         private static void Init()
         {
-            Debug.Log("Init");
             var window = GetWindow<LogicWriterEditorWindow>();
             window.autoRepaintOnSceneChange = true;
             window.Show();
@@ -75,7 +74,8 @@ namespace ClusterLogicWriter
             if (logicComponents.Count > 0)
             {
                 var options = logicComponents.Select(c =>
-                    $"{'[' + c.GetInstanceID().ToString() + ']',-10} {c.GetType().Name} ({c._Get<GimmickKey>("key").Key})").ToArray();
+                    $"{'[' + c.GetInstanceID().ToString() + ']',-10} {c.GetType().Name} ({c._Get<object>("key")._Get<object>("key")})")
+                    .ToArray();
 
                 var newSelectedIndex = EditorGUILayout.Popup(selectedIndex, options);
                 if (newSelectedIndex != selectedIndex || interpreter.logicComponent == null)
@@ -91,7 +91,7 @@ namespace ClusterLogicWriter
 
                 EditorGUI.BeginDisabledGroup(true);
                 EditorGUILayout.Space();
-                EditorGUILayout.EnumPopup("Scope", interpreter.GetLogicScope().Value);
+                EditorGUILayout.EnumPopup("Scope", interpreter.GetLogicScope());
                 EditorGUILayout.Space();
                 EditorGUI.EndDisabledGroup();
 
@@ -109,33 +109,30 @@ namespace ClusterLogicWriter
                     }
                 }
 
+                showExtractOptions = EditorGUILayout.Foldout(showExtractOptions, "Options");
+                if (showExtractOptions)
+                {
+                    EditorGUI.indentLevel += 1;
+                    autoExtract = EditorGUILayout.Toggle("Auto Extract", autoExtract);
+                    interpreter.omitCurrentTarget = EditorGUILayout.Toggle("Omit Scope", interpreter.omitCurrentTarget);
+                    interpreter.compressStatements = EditorGUILayout.Toggle("Compress Expressions", interpreter.compressStatements);
+                    EditorGUI.indentLevel -= 1;
+                }
+
+                codeScrollPosition = GUILayout.BeginScrollView(codeScrollPosition);
                 EditorGUILayout.LabelField("Logic Code" + (interpreter.codeModified ? "*" : ""));
                 interpreter.logicCode = EditorGUILayout.TextArea(interpreter.logicCode, GUILayout.ExpandHeight(true));
-            }
-
-            showExtractOptions = EditorGUILayout.Foldout(showExtractOptions, "Extract Options");
-            if (showExtractOptions)
-            {
-                EditorGUI.indentLevel += 1;
-                autoExtract = EditorGUILayout.Toggle("Auto Extract", autoExtract);
-                interpreter.omitCurrentTarget = EditorGUILayout.Toggle("Omit Scope", interpreter.omitCurrentTarget);
-                interpreter.compressStatements = EditorGUILayout.Toggle("Compress Expressions", interpreter.compressStatements);
-                EditorGUI.indentLevel -= 1;
+                GUILayout.EndScrollView();
             }
         }
-
 
         private void OnSelectionChange()
         {
             if (Selection.activeGameObject != null && Selection.activeGameObject != lastActiveGameObject)
             {
                 interpreter.logicComponent = null;
-
-                var window = GetWindow<LogicWriterEditorWindow>();
-                if (window != null)
-                {
-                    window.Repaint();
-                }
+                
+                Repaint();
 
                 lastActiveGameObject = Selection.activeGameObject;
             }
