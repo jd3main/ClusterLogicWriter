@@ -3,23 +3,30 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEditor;
+using UnityEditorInternal;
 
 using ClusterVR.CreatorKit.Operation;
 using ClusterVR.CreatorKit.Gimmick;
 using ClusterVR.CreatorKit.Gimmick.Implements;
 
+
+
 namespace ClusterLogicWriter
 {
     public class LogicWriterEditorWindow : EditorWindow
     {
-        List<Component> logicComponents;
-        int selectedIndex = 0;
-        bool autoExtract = true;
-        bool showExtractOptions = false;
-        Vector2 codeScrollPosition;
-        GameObject lastActiveGameObject;
+        public LogicInterpreter interpreter = new LogicInterpreter();
 
-        LogicInterpreter interpreter = new LogicInterpreter();
+        private List<Component> logicComponents;
+        private int selectedIndex = 0;
+        private bool autoExtract = true;
+        private bool showExtractOptions = false;
+        private Vector2 codeScrollPosition;
+        private GameObject lastActiveGameObject;
+
+        private RoomStatesDrawer roomStatesDrawer = new RoomStatesDrawer();
+
+        SerializedObject serializedObject;
 
         ILogic SelectedLogicComponent
         {
@@ -60,8 +67,18 @@ namespace ClusterLogicWriter
             }
         }
 
+        private void OnEnable()
+        {
+            serializedObject = new SerializedObject(this);
+            var interpreterProp = serializedObject.FindProperty("interpreter");
+            var roomStatesProp = interpreterProp.FindPropertyRelative("roomStates");
+            roomStatesDrawer.Init(roomStatesProp);
+        }
+
         private void Draw()
         {
+            serializedObject.Update();
+
             GameObject activeGameObject = Selection.activeGameObject;
 
             EditorGUI.BeginDisabledGroup(true);
@@ -119,11 +136,15 @@ namespace ClusterLogicWriter
                     EditorGUI.indentLevel -= 1;
                 }
 
+                roomStatesDrawer.Draw();
+
                 codeScrollPosition = GUILayout.BeginScrollView(codeScrollPosition);
                 EditorGUILayout.LabelField("Logic Code" + (interpreter.codeModified ? "*" : ""));
                 interpreter.LogicCode = EditorGUILayout.TextArea(interpreter.LogicCode, GUILayout.ExpandHeight(true));
                 GUILayout.EndScrollView();
             }
+
+            serializedObject.ApplyModifiedProperties();
         }
 
         private void OnSelectionChange()

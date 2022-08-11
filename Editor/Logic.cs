@@ -51,6 +51,13 @@ namespace ClusterLogicWriter
         public TargetState TargetState => SingleStatement.TargetState;
         public Expression Expression => SingleStatement.Expression;
 
+        public Statement(TargetState targetState, Expression expression)
+        {
+            SingleStatement = new SingleStatement();
+            SingleStatement.TargetState = targetState;
+            SingleStatement.Expression = expression;
+        }
+
         public bool IsValid()
         {
             return singleStatement != null && singleStatement.IsValid();
@@ -389,7 +396,7 @@ namespace ClusterLogicWriter
     }
 
     [Serializable]
-    public class TargetState : IEquatable<TargetState>, IEquatable<SourceState>
+    public class TargetState : IRoomState
     {
         public static readonly List<ParameterType> SelectableTypes = new List<ParameterType>(6)
             { ParameterType.Signal, ParameterType.Bool, ParameterType.Float, ParameterType.Integer, ParameterType.Vector2, ParameterType.Vector3 };
@@ -401,6 +408,7 @@ namespace ClusterLogicWriter
         public LogicScope Target { get => target; set { target = value; } }
         public string Key { get => key; set { key = value; } }
         public ParameterType ParameterType { get => parameterType; set { parameterType = value; } }
+        public ParameterType Type { get => parameterType; set { parameterType = value; } }
 
 
         public bool IsValid()
@@ -408,19 +416,11 @@ namespace ClusterLogicWriter
             return !string.IsNullOrWhiteSpace(key) && SelectableTypes.Contains(parameterType);
         }
 
-        public bool Equals(TargetState targetState)
-        {
-            if (targetState == null)
-                return false;
-            return target == targetState.target
-                && key == targetState.key;
-        }
-
-        public bool Equals(SourceState state)
+        public bool SameTarget(IRoomState state)
         {
             if (state == null)
                 return false;
-            return target.Equals(state.Target)
+            return target == state.Target
                 && key == state.Key;
         }
     }
@@ -470,7 +470,7 @@ namespace ClusterLogicWriter
     }
 
     [Serializable]
-    public class SourceState : IEquatable<TargetState>
+    public class SourceState : IRoomState
     {
         public static readonly List<ParameterType> SelectableTypes = new List<ParameterType>(6)
             { ParameterType.Double, ParameterType.Bool, ParameterType.Float, ParameterType.Integer, ParameterType.Vector2, ParameterType.Vector3 };
@@ -490,21 +490,21 @@ namespace ClusterLogicWriter
             return typeIsValid && keyIsValid;
         }
 
-        public bool Equals(TargetState targetState)
+        public bool SameTarget(IRoomState state)
         {
-            if (targetState == null)
+            if (state == null)
                 return false;
-            return target == targetState.Target
-                && key == targetState.Key;
+            return target == state.Target
+                && key == state.Key;
         }
+    }
 
-        public bool Equals(SourceState sourceState)
-        {
-            if (sourceState == null)
-                return false;
-            return target == sourceState.Target
-                && key == sourceState.Key;
-        }
+    public interface IRoomState
+    {
+        LogicScope Target { get; set; }
+        string Key { get; set; }
+        ParameterType Type { get; set; }
+        bool SameTarget(IRoomState state);
     }
 }
 

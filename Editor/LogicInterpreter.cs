@@ -1,17 +1,16 @@
-﻿using System.Collections;
+﻿using System;
+using System.Linq;
+using System.Text;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.Assertions;
+using UnityEditor;
+using UnityEditorInternal;
 
 using ClusterVR.CreatorKit;
 using ClusterVR.CreatorKit.Gimmick;
 using ClusterVR.CreatorKit.Operation;
 using ClusterVR.CreatorKit.Operation.Implements;
-
-using System;
-using System.Linq;
-using System.Text;
 
 
 namespace ClusterLogicWriter
@@ -19,6 +18,7 @@ namespace ClusterLogicWriter
     using ValueType = ClusterVR.CreatorKit.Operation.ValueType;
     using _Logic = ClusterVR.CreatorKit.Operation.Logic;
 
+    [System.Serializable]
     public class LogicInterpreter
     {
         public ILogic logicComponent;
@@ -26,7 +26,8 @@ namespace ClusterLogicWriter
         public bool compressStatements = true;
         public bool codeModified = true;
 
-        [SerializeField]
+        public List<RoomState> roomStates = new List<RoomState>();
+
         private string logicCode = "";
 
         public string LogicCode
@@ -42,7 +43,6 @@ namespace ClusterLogicWriter
             }
         }
 
-
         public LogicInterpreter()
         {
             Debug.Log("LogicInterpreter()");
@@ -52,19 +52,23 @@ namespace ClusterLogicWriter
         {
             Logic logic = (Logic)logicComponent.Logic;
 
+            ExtractTypes(logic.Statements);
+
             if (compressStatements)
             {
                 logic.Statements = CompressStatements(logic.Statements).ToArray();
             }
 
             LogicCode = ToCode(logic.Statements);
+
             codeModified = false;
         }
 
         public void Compile()
         {
-            Debug.Log($"logicCode = {LogicCode}");
             Logic logic = ParseLogic(LogicCode);
+            logic.Statements = Flatten(logic.Statements).ToArray();
+
             logicComponent.Set("logic", (_Logic)logic);
             codeModified = false;
         }
@@ -196,6 +200,38 @@ namespace ClusterLogicWriter
             }
         }
 
+        public void ExtractTypes(IEnumerable<Statement> statements)
+        {
+            Debug.Log("ExtractTypes()");
+
+            IEnumerable<IRoomState> targetStates = statements.Select(stm => stm.TargetState);
+
+            IEnumerable<IRoomState> sourceStates = statements.Where(stm => stm.Expression.Type == ExpressionType.Value)
+                                                              .Select(stm => stm.Expression.Value.SourceState);
+
+            Expression[] operands = statements.Where(stm => stm.Expression.Type == ExpressionType.OperatorExpression)
+                                              .Select(stm => stm.Expression.OperatorExpression.Operands)
+                                              .Aggregate((a,b) => a.Union(b).ToArray());
+            IEnumerable<Expression> roomStateOperands = operands.Where(exp => exp.Value.Type == ValueType.RoomState);
+            IEnumerable<IRoomState> operandSourceStates = roomStateOperands.Select(exp => exp.Value.SourceState);
+
+            IEnumerable<IRoomState> states = operandSourceStates.Concat(sourceStates).Concat(targetStates);
+
+            roomStates.Clear();
+            foreach (var state in states)
+            {
+                var found = roomStates.FindIndex(s => s.SameTarget(state));
+                if (found == -1)
+                {
+                    roomStates.Add(new RoomState(state));
+                }
+                else
+                {
+                    roomStates[found] = new RoomState(state);
+                }
+            }
+        }
+
 
         public Logic ParseLogic(string s)
         {
@@ -214,6 +250,37 @@ namespace ClusterLogicWriter
             logic.Statements = statements.ToArray();
 
             return logic;
+        }
+
+        public List<Statement> Flatten(IEnumerable<Statement> statements)
+        {
+            var stms = statements.ToList();
+            for (int i=0; i<stms.Count; i++)
+            {
+                if (stms[i].Expression.Type == ExpressionType.OperatorExpression)
+                {
+                    var operands = stms[i].Expression.OperatorExpression.Operands;
+                    for (int j = 0; j < operands.Length; j++)
+                    {
+                        if (operands[j].Type == ExpressionType.OperatorExpression)
+                        {
+                            var innerStm = new Statement(stms[i].TargetState, operands[j]);
+                            stms.Insert(i, innerStm);
+
+                            operands[j] = new Expression();
+                            operands[j].Type = ExpressionType.Value;
+                            operands[j].Value = new Value();
+                            operands[j].Value.Type = ValueType.RoomState;
+                            operands[j].Value.SourceState = new SourceState();
+                            operands[j].Value.SourceState.Target = stms[i].TargetState.Target;
+                            operands[j].Value.SourceState.Key = stms[i].TargetState.Key;
+                            operands[j].Value.SourceState.Type = stms[i].TargetState.Type;
+                            Debug.Log(stms[i].TargetState.Type);
+                        }
+                    }
+                }
+            }
+            return stms;
         }
 
         public Statement ParseStatement(string s)
@@ -244,14 +311,7 @@ namespace ClusterLogicWriter
 
             Debug.Log($"expression = {ToCode(expression)}");
 
-            // Construct the statement
-            Statement stm = new Statement();
-            SingleStatement single = new SingleStatement();
-            stm.SingleStatement = single;
-            single.TargetState = targetState;
-            single.Expression = expression;
-
-            return stm;
+            return new Statement(targetState, expression);
         }
 
         public List<string> Tokenize(string s)
@@ -286,6 +346,10 @@ namespace ClusterLogicWriter
                     {
                         token += c;
                     }
+                    else if (lastChar == '.' && !Enum.IsDefined(typeof(LogicScope), tokens.Last().TrimEnd('.')))
+                    {
+                        token += c;
+                    }
                     else
                     {
                         tokens.Add(token);
@@ -295,6 +359,8 @@ namespace ClusterLogicWriter
                 else if (c == '.')
                 {
                     if (char.IsDigit(lastChar))
+                        token += c;
+                    else if (!Enum.IsDefined(typeof(LogicScope), tokens.Last()))
                         token += c;
                     else
                     {
@@ -530,8 +596,8 @@ namespace ClusterLogicWriter
             Operator op = new Operator();
 
             Assert.IsTrue(TryParseFunctionName(tokens[0], out op));
-            Assert.AreEqual(tokens[1], "(");
-            Assert.AreEqual(tokens.Last(), ")");
+            Assert.IsTrue(tokens[1] == "(");
+
 
             int numArgs = op.GetRequiredLength();
 
@@ -572,7 +638,9 @@ namespace ClusterLogicWriter
                 case Operator.Dot:
                     foreach (var operand in operands)
                     {
-                        if (operand.Value.Type == ValueType.RoomState)
+                        Debug.Log(ToCode(operand));
+                        if (operand.Type == ExpressionType.Value
+                            && operand.Value.Type == ValueType.RoomState)
                         {
                             operand.Value.SourceState.Type = ParameterType.Vector3;
                         }
@@ -585,6 +653,7 @@ namespace ClusterLogicWriter
             opExp.Operands = operands.ToArray();
             return opExp;
         }
+
 
         public OperatorExpression ParseOperatorExpression(IList<string> tokens)
         {
@@ -618,22 +687,13 @@ namespace ClusterLogicWriter
 
         public Value ParseValueExpression(IList<string> tokens)
         {
-            //Debug.Log($"ParseValueExpression({TokensToString(tokens)})");
-
-            /* A Value can be:
-             *      1. RoomState
-             *      2. Constant
-             *          * boolean
-             *          * vectors
-             *          * numeric
-             **/
+            Debug.Log($"ParseValueExpression({TokensToString(tokens)})");
 
             Value value = new Value();
+            Debug.Log($"value = {JsonUtility.ToJson(value)}");
 
-            if (char.IsLetter(tokens[0][0])
-                && tokens[0] != "Vector2" && tokens[0] != "Vector3"
-                && tokens[0].ToLower() != "true" && tokens[0].ToLower() != "false")
-            {   // Is RoomState
+            if (IsRoomState(tokens[0]))
+            {
                 GimmickTarget gimmickTarget;
                 string key;
                 if (Enum.TryParse(tokens[0], false, out gimmickTarget))
@@ -650,9 +710,11 @@ namespace ClusterLogicWriter
                 value.SourceState = new SourceState();
                 value.SourceState.Target = (LogicScope)gimmickTarget;    // Item, Player, Global
                 value.SourceState.Key = key;
+
+                value.constant = null;
             }
-            else
-            {   // Is Constant
+            else   // Is Constant
+            {
                 value.Type = ValueType.Constant;
                 ConstantValue constantValue = new ConstantValue();
 
@@ -682,8 +744,20 @@ namespace ClusterLogicWriter
                 }
 
                 value.constant = constantValue;
+                value.SourceState = null;
             }
+            Debug.Log($"value.constaint = {value.constant}");
+            Debug.Log($"value.SourceState = {value.SourceState}");
             return value;
+        }
+
+        public bool IsRoomState(string token)
+        {
+            return char.IsLetter(token[0])
+                && token != "Vector2"
+                && token != "Vector3"
+                && token.ToLower() != "true"
+                && token.ToLower() != "false";
         }
 
         public LogicScope GetLogicScope()
@@ -729,6 +803,7 @@ namespace ClusterLogicWriter
 
         public ConstantValue ParseNumericValue(string token)
         {
+            Debug.Log($"ParseNumericValue({token})");
             ConstantValue constValue = new ConstantValue();
 
             if (token.Contains("."))
@@ -830,31 +905,30 @@ namespace ClusterLogicWriter
         }
 
 
-        public List<Statement> CompressStatements(IEnumerable<Statement> _statements)
+        public List<Statement> CompressStatements(IEnumerable<Statement> statements)
         {
-            List<Statement> statements = _statements.ToList();
-            for (int i = 1; i < statements.Count; i++)
+            List<Statement> stms = statements.ToList();
+            for (int i = 1; i < stms.Count; i++)
             {
-                if (statements[i].TargetState.Equals(statements[i-1].TargetState)
-                    && statements[i].SingleStatement.Expression.Type == ExpressionType.OperatorExpression)
+                if (stms[i].Expression.Type == ExpressionType.OperatorExpression
+                    && stms[i].TargetState.Equals(stms[i - 1].TargetState))
                 {
-                    var opExp = statements[i].Expression.OperatorExpression;
-                    var operands = opExp.Operands;
+                    var operands = stms[i].Expression.OperatorExpression.Operands;
                     for (int j = 0; j < operands.Length; j++)
                     {
                         if (operands[j].Type == ExpressionType.Value
                             && operands[j].Value.Type == ValueType.RoomState
-                            && operands[j].Value.SourceState.Equals(statements[i].TargetState))
+                            && operands[j].Value.SourceState.Equals(stms[i].TargetState))
                         {
-                            operands[j] = statements[i - 1].Expression;
+                            operands[j] = stms[i - 1].Expression;
                         }
                     }
 
-                    statements.RemoveAt(i - 1);
+                    stms.RemoveAt(i - 1);
                     i -= 1;
                 }
             }
-            return statements;
+            return stms;
         }
 
         private static string TokensToString(IEnumerable<string> tokens)
@@ -868,6 +942,35 @@ namespace ClusterLogicWriter
         }
 
     }
+
+
+    [Serializable]
+    public class RoomState: IRoomState
+    {
+        public LogicScope target;
+        public string key;
+        public ParameterType type;
+
+        public LogicScope Target { get => target; set { target = value; } }
+        public string Key { get => key; set { key = value; } }
+        public ParameterType Type { get => type; set { type = value; } }
+
+        public RoomState(IRoomState state)
+        {
+            target = state.Target;
+            key = state.Key;
+            type = state.Type;
+        }
+
+        public bool SameTarget(IRoomState state)
+        {
+            if (state == null)
+                return false;
+            return target == state.Target
+                && key == state.Key;
+        }
+    }
+
 
     public enum AssignType
     {
