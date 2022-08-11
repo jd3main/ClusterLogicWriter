@@ -1,4 +1,9 @@
+> :warning: This project is no more actively maintained. See the latest progress in the `develop` branch. If you are interested in continuing this project, feel free to contact me via email or leaving an issue.
+
 # Cluster Logic Writer
+
+
+
 Cluster Logic Writer is a tool working with ClusterVR's **[ ClusterCreatorKit](https://github.com/ClusterVR/ClusterCreatorKit)**, providing ability to edit logics with codes.
 
 ![](https://raw.githubusercontent.com/wiki/jd3main/ClusterLogicWriter/example.png)
